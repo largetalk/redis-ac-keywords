@@ -1,3 +1,8 @@
+#coding: utf-8
+
+'''
+使用redis的ac算法
+'''
 import redis
 
 class RedisACKeywords(object):
@@ -62,13 +67,16 @@ class RedisACKeywords(object):
             c = utext[i]
             next_state = self._go(state, c)
             if next_state is None:
-                next_state = self._fail(state)
-                _next_state = self._go(next_state, c)
-                if _next_state is None:
-                    _next_state = self._fail(next_state + c)
-                next_state = _next_state
+                next_state = self._fail(state + c)
+                ####################
+                ## the above line likes take same effect as this block
+                #next_state = self._fail(state)
+                #_next_state = self._go(next_state, c)
+                #if _next_state is None:
+                #    _next_state = self._fail(next_state + c)
+                #next_state = _next_state
+                ######################
 
-            pos = i - 1
             outputs = self._output(state)
             ret.extend(outputs)
 
@@ -76,7 +84,6 @@ class RedisACKeywords(object):
             i += 1
 
         # check last state
-        pos = i - 1
         outputs = self._output(state)
         ret.extend(outputs)
         return ret
@@ -110,6 +117,9 @@ class RedisACKeywords(object):
         return ret
 
     def _go(self, state, c):
+        '''
+        转向函数
+        '''
         assert type(state) is unicode
         next_state = state + c
         i = self.client.zscore(self.PREFIX_KEY % self.name, next_state)
@@ -183,6 +193,9 @@ class RedisACKeywords(object):
         return next_state
 
     def _output(self, state):
+        '''
+        输出函数
+        '''
         assert type(state) is unicode
         return [self.smart_unicode(k) for k in self.client.smembers(self.OUTPIUT_KEY % state)]
 
@@ -243,11 +256,23 @@ class RedisACKeywords(object):
                 self.client.zrem(self.SUFFIX_KEY % self.name, _suffix)
 
 if __name__ == '__main__':
-    keywords = RedisACKeywords(name='test')
+    acs = RedisACKeywords(name='test3')
+    ks = ['aabbc', 'abbc', 'bbb']
+    for k in ks:
+        acs.add(k)
+
+    print 'find result in aaabbbccc is :', acs.find('aaabbbccc')
+    acs.flush()
+
+
+
+    keywords = RedisACKeywords(name='test2')
 
     ks = ['her', 'he', 'his']
     for k in ks:
         keywords.add(k)
+        keywords.debug_print()
+        print '>>>>>>>>>>>>'
 
     input = 'he'
     print 'suggest %s: ' % input, keywords.suggest(input) # her, he
