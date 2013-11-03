@@ -5,6 +5,19 @@
 '''
 import redis
 
+
+def smart_unicode(s, encoding='utf-8'):
+    ret = s
+    if type(s) is str:
+        ret = s.decode(encoding)
+    return ret
+
+def smart_str(s, encoding='utf-8'):
+    ret = s
+    if type(s) is unicode:
+        ret = s.encode(encoding)
+    return ret
+
 class RedisACKeywords(object):
     '''
     (1) Efficient String Matching: An Aid to Bibliographic Search
@@ -28,7 +41,7 @@ class RedisACKeywords(object):
         self.client = redis.Redis(host=host, port=port, db=db)
         self.client.ping()
 
-        self.name = self.smart_unicode(name)
+        self.name = smart_unicode(name)
 
         # Init trie root
         self.client.zadd(self.PREFIX_KEY % self.name, u'', 1.0)
@@ -37,7 +50,7 @@ class RedisACKeywords(object):
     def add(self, keyword):
         keyword = keyword.strip().lower()
         assert keyword
-        keyword = self.smart_unicode(keyword)
+        keyword = smart_unicode(keyword)
 
         # Add keyword in keyword set
         self.client.sadd(self.KEYWORD_KEY % self.name, keyword)
@@ -50,7 +63,7 @@ class RedisACKeywords(object):
     def remove(self, keyword):
         assert keyword
         keyword = keyword.strip().lower()
-        keyword = self.smart_unicode(keyword)
+        keyword = smart_unicode(keyword)
 
         self._remove(keyword)
 
@@ -62,7 +75,7 @@ class RedisACKeywords(object):
         ret = []
         i = 0
         state = u''
-        utext = self.smart_unicode(text)
+        utext = smart_unicode(text)
         while i < len(utext):
             c = utext[i]
             next_state = self._go(state, c)
@@ -91,8 +104,8 @@ class RedisACKeywords(object):
     def flush(self):
         keywords = self.client.smembers(self.KEYWORD_KEY % self.name)
         for keyword in keywords:
-            self.client.delete(self.OUTPIUT_KEY % self.smart_unicode(keyword))
-            self.client.delete(self.NODE_KEY % self.smart_unicode(keyword))
+            self.client.delete(self.OUTPIUT_KEY % smart_unicode(keyword))
+            self.client.delete(self.NODE_KEY % smart_unicode(keyword))
         self.client.delete(self.PREFIX_KEY % self.name)
         self.client.delete(self.SUFFIX_KEY % self.name)
         self.client.delete(self.KEYWORD_KEY % self.name)
@@ -104,12 +117,12 @@ class RedisACKeywords(object):
         }
 
     def suggest(self, input):
-        input = self.smart_unicode(input)
+        input = smart_unicode(input)
         ret = []
         rank = self.client.zrank(self.PREFIX_KEY % self.name, input)
         a = self.client.zrange(self.PREFIX_KEY % self.name, rank, rank)
         while a:
-            node = self.smart_unicode(a[0])
+            node = smart_unicode(a[0])
             if node.startswith(input) and self.client.sismember(self.KEYWORD_KEY % self.name, node):
                 ret.append(node)
             rank += 1
@@ -142,24 +155,12 @@ class RedisACKeywords(object):
                 if (self.client.sismember(self.KEYWORD_KEY % self.name, prefix)): # node may change, rebuild affected nodes
                     self._rebuild_output(_suffix)
 
-    def smart_unicode(self, s):
-        ret = s
-        if type(s) is str:
-            ret = s.decode(self.encoding)
-        return ret
-
-    def smart_str(self, s):
-        ret = s
-        if type(s) is unicode:
-            ret = s.encode(self.encoding)
-        return ret
-
     def _rebuild_output(self, _suffix):
         assert type(_suffix) is unicode
         rank = self.client.zrank(self.SUFFIX_KEY % self.name, _suffix)
         a = self.client.zrange(self.SUFFIX_KEY % self.name, rank, rank)
         while a:
-            suffix_ = self.smart_unicode(a[0])
+            suffix_ = smart_unicode(a[0])
             if suffix_.startswith(_suffix):
                 state = u''.join(reversed(suffix_))
                 self._build_output(state)
@@ -183,6 +184,9 @@ class RedisACKeywords(object):
                 self.client.sadd(self.NODE_KEY % k, state) # ref node for delete keywords in output
 
     def _fail(self, state):
+        '''
+        失败函数
+        '''
         assert type(state) is unicode
         # max suffix node will be the failed node
         next_state = u''
@@ -197,7 +201,7 @@ class RedisACKeywords(object):
         输出函数
         '''
         assert type(state) is unicode
-        return [self.smart_unicode(k) for k in self.client.smembers(self.OUTPIUT_KEY % state)]
+        return [smart_unicode(k) for k in self.client.smembers(self.OUTPIUT_KEY % state)]
 
     def debug_print(self):
         keywords = self.client.smembers(self.KEYWORD_KEY % self.name)
@@ -213,15 +217,15 @@ class RedisACKeywords(object):
 
         outputs = []
         for node in prefix:
-            output = self._output(self.smart_unicode(node))
-            outputs.append(output)
+            output = self._output(smart_unicode(node))
+            outputs.append({node: output})
         if outputs:
             print '-',  'outputs', outputs
 
         nodes = []
         for keyword in keywords:
-            keyword_nodes = self.client.smembers(self.NODE_KEY % self.smart_unicode(keyword))
-            nodes.append(keyword_nodes)
+            keyword_nodes = self.client.smembers(self.NODE_KEY % smart_unicode(keyword))
+            nodes.append({keyword: keyword_nodes})
         if nodes:
             print '-', 'nodes', nodes
 
@@ -229,7 +233,7 @@ class RedisACKeywords(object):
         assert type(keyword) is unicode
         nodes = self.client.smembers(self.NODE_KEY % keyword)
         for node in nodes:
-            self.client.srem(self.OUTPIUT_KEY % self.smart_unicode(node), keyword)
+            self.client.srem(self.OUTPIUT_KEY % smart_unicode(node), keyword)
         self.client.delete(self.NODE_KEY % keyword)
 
         # remove nodes if need
@@ -245,7 +249,7 @@ class RedisACKeywords(object):
                 break
             a = self.client.zrange(self.PREFIX_KEY % self.name, rank+1, rank+1)
             if a:
-                prefix_ = self.smart_unicode(a[0])
+                prefix_ = smart_unicode(a[0])
                 if not prefix_.startswith(prefix):
                     self.client.zrem(self.PREFIX_KEY % self.name, prefix)
                     self.client.zrem(self.SUFFIX_KEY % self.name, _suffix)
@@ -268,11 +272,15 @@ if __name__ == '__main__':
 
     keywords = RedisACKeywords(name='test2')
 
-    ks = ['her', 'he', 'his']
+    ks = ['her', 'he', 'his', 'here', 'there']
     for k in ks:
         keywords.add(k)
         keywords.debug_print()
         print '>>>>>>>>>>>>'
+
+    text = 'here'
+    print 'text: %s' % text
+    print 'keywords: %s added. ' % ' '.join(ks), keywords.find(text) # her, he
 
     input = 'he'
     print 'suggest %s: ' % input, keywords.suggest(input) # her, he
